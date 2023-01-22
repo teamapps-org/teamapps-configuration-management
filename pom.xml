@@ -20,6 +20,13 @@
             <artifactId>teamapps-message-protocol</artifactId>
             <version>0.7-SNAPSHOT</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.teamapps</groupId>
+            <artifactId>teamapps-commons</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
     </dependencies>
 
 </project>
