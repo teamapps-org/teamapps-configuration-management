@@ -1,7 +1,9 @@
 package org.teamapps.configuration;
 
 import org.teamapps.message.protocol.message.Message;
+import org.teamapps.message.protocol.model.AttributeDefinition;
 import org.teamapps.message.protocol.model.PojoObjectDecoder;
+import org.teamapps.message.protocol.utils.StringUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,13 +36,7 @@ public class Configuration {
 			return instance;
 		}
 	}
-
-	public synchronized static void initializeProgramArguments(String[] args) {
-		if (instance == null) {
-			instance = new Configuration(args);
-		}
-	}
-
+	
 	private Configuration(String[] args) {
 		init(args);
 	}
@@ -49,7 +45,7 @@ public class Configuration {
 		System.getenv().entrySet().stream()
 				.filter(entry -> ConfigKeyOverride.checkKey(entry.getKey(), true))
 				.map(entry -> new ConfigKeyOverride(entry.getKey(), entry.getValue(), true))
-				.forEach(configKeyOverride -> overridesMap.computeIfAbsent(configKeyOverride.getService(), s -> new ArrayList<>()).add(configKeyOverride));
+				.forEach(configKeyOverride -> overridesMap.computeIfAbsent(configKeyOverride.getService().toLowerCase(), s -> new ArrayList<>()).add(configKeyOverride));
 		if (args != null) {
 			for (String arg : args) {
 				int pos = arg.indexOf('=');
@@ -58,7 +54,7 @@ public class Configuration {
 					String value = arg.substring(pos + 1).trim();
 					if (ConfigKeyOverride.checkKey(key, false)) {
 						ConfigKeyOverride configKeyOverride = new ConfigKeyOverride(key, value, false);
-						overridesMap.computeIfAbsent(configKeyOverride.getService(), s -> new ArrayList<>()).add(configKeyOverride);
+						overridesMap.computeIfAbsent(configKeyOverride.getService().toLowerCase(), s -> new ArrayList<>()).add(configKeyOverride);
 					}
 				}
 			}
@@ -76,19 +72,25 @@ public class Configuration {
 		}
 	}
 
-	private void readConfig() throws IOException {
-		if (configPath.exists() && configPath.isDirectory()) {
-			List<File> configFiles = Arrays.stream(configPath.listFiles())
-					.filter(f -> f.getName().endsWith(".xml"))
-					.filter(f -> f.length() > 0)
-					.toList();
-
-			for (File configFile : configFiles) {
-				String serviceName = configFile.getName().substring(0, configFile.getName().length() - 4);
-				String xml = Files.readString(configFile.toPath(), StandardCharsets.UTF_8);
-				//todo add to map
-			}
+	private <CONFIG extends Message> CONFIG readConfig(String serviceName, PojoObjectDecoder<CONFIG> decoder) throws IOException {
+		if (!configPath.exists()) {
+			configPath.mkdir();
 		}
+		File configFile = Arrays.stream(configPath.listFiles())
+				.filter(f -> f.getName().toLowerCase().equals(serviceName.toLowerCase() + ".xml"))
+				.findAny()
+				.orElse(null);
+
+		CONFIG config;
+		if (configFile != null) {
+			String xml = Files.readString(configFile.toPath(), StandardCharsets.UTF_8);
+			config = decoder.decode(xml, null);
+		} else {
+			config = decoder.defaultMessage();
+			String xml = config.toXml();
+			Files.writeString(new File(configPath, serviceName + ".xml").toPath(), xml, StandardCharsets.UTF_8);
+		}
+		return config;
 	}
 
 	private void handleConfigUpdate(String serviceName, Message message) {
@@ -101,23 +103,38 @@ public class Configuration {
 	}
 
 
-	private <CONFIG extends Message> CONFIG initServiceConfig(String serviceName, PojoObjectDecoder<CONFIG> decoder) {
-		CONFIG config = decoder.defaultMessage();
-		/*
-			todo:
-			read config
-			apply arguments and environment variables
-		 */
+	private <CONFIG extends Message> CONFIG initServiceConfig(String serviceName, PojoObjectDecoder<CONFIG> decoder) throws IOException {
+		CONFIG config = readConfig(serviceName, decoder);
+		List<ConfigKeyOverride> configKeyOverrides = overridesMap.get(serviceName.toLowerCase());
+		if (configKeyOverrides != null) {
+			for (ConfigKeyOverride keyOverride : configKeyOverrides) {
+				String key = keyOverride.getKey();
+				List<String> path = keyOverride.getPath();
+				if (path.isEmpty()) {
+					AttributeDefinition attributeDefinition = config.getModel().getAttributeDefinitions().stream().filter(def -> def.getName().equalsIgnoreCase(key)).findAny().orElse(null);
+					if (attributeDefinition != null) {
+						config.setAttribute(attributeDefinition.getName(), StringUtils.readFromString(keyOverride.getValue(), attributeDefinition.getType()));
+					}
+				} else {
+					//todo find path
+				}
+			}
+		}
+
 		return config;
 	}
 
 	public <CONFIG extends Message> CONFIG getConfig(String serviceName, PojoObjectDecoder<CONFIG> decoder) {
-		Message message = configCache.get(serviceName.toLowerCase());
-		if (message == null) {
-			message = initServiceConfig(serviceName, decoder);
-			configCache.put(serviceName.toLowerCase(), message);
+		try {
+			Message message = configCache.get(serviceName.toLowerCase());
+			if (message == null) {
+				message = initServiceConfig(serviceName, decoder);
+				configCache.put(serviceName.toLowerCase(), message);
+			}
+			return decoder.remap(message);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
 		}
-		return decoder.remap(message);
 	}
 
 	public <CONFIG extends Message> void addConfigUpdateListener(Consumer<CONFIG> updateConsumer, String serviceName, PojoObjectDecoder<CONFIG> decoder) {
