@@ -92,24 +92,36 @@ public class Configuration {
 	}
 
 	private <CONFIG extends Message> CONFIG readConfig(String serviceName, PojoObjectDecoder<CONFIG> decoder) throws IOException {
-		if (!configPath.exists()) {
-			configPath.mkdir();
-		}
-		File configFile = Arrays.stream(configPath.listFiles())
-				.filter(f -> f.getName().toLowerCase().equals(serviceName.toLowerCase() + ".xml"))
-				.findAny()
-				.orElse(null);
+		return readConfig(configPath, serviceName, decoder);
+	}
 
+	private <CONFIG extends Message> CONFIG readConfig(File path, String serviceName, PojoObjectDecoder<CONFIG> decoder) throws IOException {
+		File configFile = new File(path, serviceName.toLowerCase() + ".xml");
+//		File configFile = Arrays.stream(path.listFiles())
+//				.filter(f -> f.getName().toLowerCase().equals(serviceName.toLowerCase() + ".xml"))
+//				.findAny()
+//				.orElse(new File(path, serviceName + ".xml"));
+		return readConfig(configFile, decoder);
+	}
+
+	private static <CONFIG extends Message> CONFIG readConfig(File configFile, PojoObjectDecoder<CONFIG> decoder) throws IOException {
 		CONFIG config;
-		if (configFile != null) {
+		if (configFile.exists()) {
 			String xml = Files.readString(configFile.toPath(), StandardCharsets.UTF_8);
 			config = decoder.decode(xml, null);
 		} else {
 			config = decoder.defaultMessage();
-			String xml = config.toXml();
-			Files.writeString(new File(configPath, serviceName + ".xml").toPath(), xml, StandardCharsets.UTF_8);
+			writeConfig(configFile, config);
 		}
 		return config;
+	}
+
+	private static <CONFIG extends Message> void writeConfig(File configFile, CONFIG config) throws IOException {
+		if (!configFile.getParentFile().exists()) {
+			configFile.getParentFile().mkdir();
+		}
+		String xml = config.toXml();
+		Files.writeString(configFile.toPath(), xml, StandardCharsets.UTF_8);
 	}
 
 	private void handleConfigUpdate(String serviceName, Message message) {
