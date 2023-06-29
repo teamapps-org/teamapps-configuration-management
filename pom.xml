@@ -53,8 +53,9 @@
         <dependency>
             <groupId>org.teamapps</groupId>
             <artifactId>teamapps-message-protocol</artifactId>
-            <version>0.13-SNAPSHOT</version>
+            <version>0.13</version>
         </dependency>
+
 
         <dependency>
             <groupId>org.teamapps</groupId>
