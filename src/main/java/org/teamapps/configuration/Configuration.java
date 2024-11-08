@@ -19,8 +19,11 @@
  */
 package org.teamapps.configuration;
 
+import org.teamapps.message.protocol.message.AttributeType;
 import org.teamapps.message.protocol.message.Message;
+import org.teamapps.message.protocol.message.MessageAttribute;
 import org.teamapps.message.protocol.model.AttributeDefinition;
+import org.teamapps.message.protocol.model.MessageModel;
 import org.teamapps.message.protocol.model.PojoObjectDecoder;
 import org.teamapps.message.protocol.utils.StringUtils;
 
@@ -47,7 +50,7 @@ public class Configuration {
 		return instance;
 	}
 
-	public synchronized static Configuration getConfiguration(String[] args) {
+	public synchronized static Configuration initializeConfiguration(String[] args) {
 		if (instance == null) {
 			instance = new Configuration(args);
 			return instance;
@@ -147,7 +150,25 @@ public class Configuration {
 						config.setAttribute(attributeDefinition.getName(), StringUtils.readFromString(keyOverride.getValue(), attributeDefinition.getType()));
 					}
 				} else {
-					//todo find path
+					MessageModel pathModel = config.getModel();
+					Message pathMessage = config;
+					for (String pathElement : path) {
+						AttributeDefinition attributeDefinition = pathModel.getAttributeDefinitionByName(pathElement);
+						if (attributeDefinition != null && attributeDefinition.getType() != AttributeType.OBJECT_SINGLE_REFERENCE) {
+							MessageAttribute messageAttribute = pathMessage.getAttribute(attributeDefinition.getName());
+							pathMessage = messageAttribute.getReferencedObject();
+							pathModel = attributeDefinition.getReferencedObject();
+						} else {
+							pathModel = null;
+							break;
+						}
+					}
+					if (pathModel != null) {
+						AttributeDefinition attributeDefinition = pathModel.getAttributeDefinitions().stream().filter(def -> def.getName().equalsIgnoreCase(key)).findAny().orElse(null);
+						if (attributeDefinition != null) {
+							pathMessage.setAttribute(attributeDefinition.getName(), StringUtils.readFromString(keyOverride.getValue(), attributeDefinition.getType()));
+						}
+					}
 				}
 			}
 		}
