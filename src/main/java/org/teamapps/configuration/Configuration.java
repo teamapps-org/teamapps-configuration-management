@@ -41,6 +41,7 @@ public class Configuration {
 	private final Map<String, List<ConfigKeyOverride>> overridesMap = new HashMap<>();
 	private final Map<String, List<ConfigUpdateConsumer<?>>> listenerMap = new HashMap<>();
 	private final Map<String, Message> configCache = Collections.synchronizedMap(new HashMap<>());
+	private final Map<String, String> localConfig = new HashMap<>();
 	private File configPath = new File("./config/");
 
 	public synchronized static Configuration getConfiguration() {
@@ -64,6 +65,7 @@ public class Configuration {
 	}
 
 	private void init(String[] args) {
+		localConfig.putAll(System.getenv());
 		System.getenv().entrySet().stream()
 				.filter(entry -> ConfigKeyOverride.checkKey(entry.getKey(), true))
 				.map(entry -> new ConfigKeyOverride(entry.getKey(), entry.getValue(), true))
@@ -74,6 +76,7 @@ public class Configuration {
 				if (pos > 0) {
 					String key = arg.substring(0, pos).replace("-", "").trim();
 					String value = arg.substring(pos + 1).trim();
+					localConfig.put(key, value);
 					if (ConfigKeyOverride.checkKey(key, false)) {
 						ConfigKeyOverride configKeyOverride = new ConfigKeyOverride(key, value, false);
 						overridesMap.computeIfAbsent(configKeyOverride.getService().toLowerCase(), s -> new ArrayList<>()).add(configKeyOverride);
@@ -92,6 +95,10 @@ public class Configuration {
 				this.configPath = new File(customPath);
 			}
 		}
+	}
+
+	public String getLocalConfig(String key) {
+		return localConfig.get(key);
 	}
 
 	private <CONFIG extends Message> CONFIG readConfig(String serviceName, PojoObjectDecoder<CONFIG> decoder) throws IOException {
